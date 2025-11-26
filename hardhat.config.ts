@@ -1,15 +1,16 @@
-import hardhatToolboxViemPlugin from "@nomicfoundation/hardhat-toolbox-viem";
-import { configVariable, defineConfig } from "hardhat/config";
+import 'dotenv/config';
+import hardhatToolboxViemPlugin from '@nomicfoundation/hardhat-toolbox-viem';
+import { configVariable, defineConfig } from 'hardhat/config';
 
 export default defineConfig({
   plugins: [hardhatToolboxViemPlugin],
   solidity: {
     profiles: {
       default: {
-        version: "0.8.28",
+        version: '0.8.28',
       },
       production: {
-        version: "0.8.28",
+        version: '0.8.28',
         settings: {
           optimizer: {
             enabled: true,
@@ -20,19 +21,21 @@ export default defineConfig({
     },
   },
   networks: {
-    hardhatMainnet: {
-      type: "edr-simulated",
-      chainType: "l1",
+    hardhat: {
+      type: 'edr-simulated',
+      chainType: 'l1',
     },
-    hardhatOp: {
-      type: "edr-simulated",
-      chainType: "op",
+    polygonAmoy: {
+      type: 'http',
+      chainType: 'op',
+      url: configVariable('POLYGON_AMOY_RPC_URL'),
+      accounts: [configVariable('WALLET_PRIVATE_KEY')],
     },
-    sepolia: {
-      type: "http",
-      chainType: "l1",
-      url: configVariable("SEPOLIA_RPC_URL"),
-      accounts: [configVariable("SEPOLIA_PRIVATE_KEY")],
+    arbitrumSepolia: {
+      type: 'http',
+      chainType: 'op',
+      url: configVariable('ARBITRUM_SEPOLIA_RPC_URL'),
+      accounts: [configVariable('WALLET_PRIVATE_KEY')],
     },
   },
 });

@@ -4,7 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "compile": "hardhat compile",
+    "deploy:polygonAmoy": "hardhat run scripts/deploy-tokens.ts --network polygonAmoy",
+    "deploy:arbitrumSepolia": "hardhat run scripts/deploy-tokens.ts --network arbitrumSepolia",
+    "mint": "ts-node scripts/mint-token.ts"
   },
   "repository": {
     "type": "git",
@@ -26,6 +29,7 @@
     "hardhat": "^3.0.15",
     "ts-node": "^10.9.2",
     "typescript": "~5.8.0",
-    "viem": "^2.40.3"
+    "viem": "^2.40.3",
+    "dotenv": "^16.4.7"
   }
 }

@@ -116,9 +116,9 @@ npm run mint -- \
 npm run mint -- \
 	--network arbitrumSepolia \
 	--token USDCp \
-	--to 0x66e53658f2415ab234c7afbaecacea9f16ee365c \
+	--to 0x66e... \
 	--amount 1000000 \
-	--token-address 0x482a..
+	--token-address 0x482a...
 ```
 
 Пример вывода:

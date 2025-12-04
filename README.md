@@ -1,31 +1,54 @@
-## hardhat-mint
+## Liquidity Infrastructure Builder (Uniswap V2, Hardhat, Viem)
 
-Проект на Hardhat 3 + TypeScript для деплоя и минта двух тестовых ERC20‑подобных токенов (`USDCp`, `USDTp`) в сетях Polygon Amoy и Arbitrum Sepolia с удобным CLI.
+Проект на Hardhat 3 + TypeScript, который разворачивает минимальную инфраструктуру Uniswap V2‑подобного DEX и тестовые токены в сетях Polygon Amoy и Arbitrum Sepolia.
 
-Контракты:
+После запуска единого скрипта `scripts/setup.ts` в каждой сети будут:
 
-- `contracts/USDCp.sol` — токен c символом `USDCp`, `decimals = 6`.
-- `contracts/USDTp.sol` — токен c символом `USDTp`, `decimals = 6`.
+- тестовые токены: `TestUSDC`, `TestUSDT`;
+- токен обёрнутого нативного актива: `WETH9` (локальный mock);
+- `UniswapV2Factory`;
+- `UniswapV2Router02Minimal` (упрощённый Router02);
+- пул ликвидности `USDC–USDT` (локальный для каждой сети);
+- заминченные балансы для добавления ликвидности.
 
-Скрипты:
-
-- `scripts/deploy-tokens.ts` — деплой обоих токенов в выбранную сеть Hardhat.
-- `scripts/mint-token.ts` — отдельный CLI (без hardhat run) для минта любого из токенов.
+Это создаёт две независимые DEX‑зоны (Polygon Amoy и Arbitrum Sepolia), которые можно использовать для будущего офф‑чейн роутинга и кросс‑сетевых swap’ов.
 
 ---
 
-## 1. Установка зависимостей
+## 1. Установка Node.js, npm, Hardhat
+
+1. Установи Node.js LTS (18+):
+   - https://nodejs.org
+2. Проверь версии:
+
+```bash
+node -v
+npm -v
+```
+
+3. Локальная установка Hardhat уже описана в `package.json`, глобально ставить не обязательно – всё запускается через `npx hardhat ...`.
+
+---
+
+## 2. Установка зависимостей
 
 ```bash
 cd /c/projects/hardhat-mint
 npm install
 ```
 
+Зависимости включают:
+
+- `hardhat` 3;
+- `@nomicfoundation/hardhat-toolbox-viem`;
+- `viem`;
+- `@openzeppelin/contracts` (для ERC20).
+
 ---
 
-## 2. Настройка переменных окружения
+## 3. Настройка `.env`
 
-Создай файл `.env` в корне проекта:
+Создай файл `.env` в корне проекта (рядом с `hardhat.config.ts`):
 
 ```env
 # RPC эндпоинты тестовых сетей
@@ -39,13 +62,15 @@ WALLET_PRIVATE_KEY=0xТВОЙ_ПРИВАТНЫЙ_КЛЮЧ
 Где взять значения:
 
 - `*_RPC_URL` — в Alchemy/Infura/QuickNode и т.п.: создаёшь App под сеть Polygon Amoy / Arbitrum Sepolia и копируешь HTTPS URL.
-- `WALLET_PRIVATE_KEY` — экспорт приватного ключа из Rabby/MetaMask (строка hex, добавь префикс `0x`).
+- `WALLET_PRIVATE_KEY` — экспорт приватного ключа из Rabby/MetaMask (строка hex, обязательно с префиксом `0x`).
 
-Убедись, что `.env` добавлен в `.gitignore` и не коммитится.
+`hardhat.config.ts` уже использует эти переменные через `configVariable(...)`.
+
+Убедись, что `.env` не коммитится (он уже в `.gitignore`).
 
 ---
 
-## 3. Компиляция контрактов
+## 4. Компиляция контрактов
 
 ```bash
 npx hardhat compile
@@ -54,116 +79,174 @@ npx hardhat compile
 Ожидаемый результат: сообщение вида
 
 ```text
-Compiled 2 Solidity files with solc 0.8.28 (evm target: cancun)
+Compiled Solidity files with solc 0.8.28 (evm target: cancun)
 ```
 
 ---
 
-## 4. Деплой токенов в тестовую сеть
+## 5. Единый скрипт `setup.ts`
 
-### Arbitrum Sepolia
+Главная точка входа — `scripts/setup.ts`. Он выполняет все шаги:
 
-```bash
-npm run deploy:arbitrumSepolia
-```
+1. **Deploy Tokens**
+   - деплой `TestUSDC` и `TestUSDT` в выбранной сети;
+   - адреса сохраняются в `addresses/<network>.json`.
+2. **Deploy DEX Infrastructure**
+   - деплой `WETH9` (локальный wrapped native);
+   - деплой `UniswapV2Factory` (с `feeToSetter = deployer`);
+   - деплой `UniswapV2Router02Minimal` (передаётся `factory` и `WETH`).
+3. **Create Pairs**
+   - вызов `factory.createPair(TestUSDC, TestUSDT)`;
+   - адрес пары сохраняется в `addresses/<network>.json` как `USDC_USDT_Pair`.
+4. **Mint Tokens**
+   - минтит на адрес деплоера:
+     - `TestUSDC`: `1_000_000 * 10^18`;
+     - `TestUSDT`: `1_000_000 * 10^18`.
+5. **Approve Router**
+   - `TestUSDC.approve(router, max)`;
+   - `TestUSDT.approve(router, max)`.
+6. **Add Liquidity**
+   - вызов `router.addLiquidity(USDC, USDT, amountA, amountB, amountAMin, amountBMin, to, deadline)` с симметричными суммами;
+   - ликвидность отправляется на адрес деплоера.
 
-Пример вывода:
+Скрипт использует `hardhat-viem` API:
 
-```text
-Network chainId: 421614
-Deployer: 0x66e5...
-USDCp deployed to: 0x482a...
-USDTp deployed to: 0xf04d...
-```
+- `viem.deployContract('ContractName', [...args])`;
+- `viem.getContractAt('ContractName', address)`;
+- `contract.write.<method>([args...])`.
 
-Сохрани адреса контрактов `USDCp` и `USDTp` для дальнейшего минта.
+---
 
-ВАЖНО!!!
-“Сохрани адреса токенов и больше не запускай deploy, если не хочешь получить новые экземпляры контрактов.”
+## 6. Как запустить `setup.ts` для каждой сети
+
+Команды уже прописаны в `package.json`:
 
 ### Polygon Amoy
 
 ```bash
-npm run deploy:polygonAmoy
+npm run setup:polygonAmoy
 ```
 
-Вывод будет аналогичный, но с `chainId` сети Polygon Amoy и другими адресами контрактов.
+### Arbitrum Sepolia
+
+```bash
+npm run setup:arbitrumSepolia
+```
+
+Под капотом это эквивалентно:
+
+```bash
+npx hardhat run scripts/setup.ts --network polygonAmoy
+npx hardhat run scripts/setup.ts --network arbitrumSepolia
+```
+
+После успешного выполнения для каждой сети появится файл:
+
+- `addresses/polygonAmoy.json`;
+- `addresses/arbitrumSepolia.json`.
+
+Внутри будут адреса вида:
+
+```json
+{
+  "TestUSDC": "0x...",
+  "TestUSDT": "0x...",
+  "WETH9": "0x...",
+  "UniswapV2Factory": "0x...",
+  "UniswapV2Router02": "0x...",
+  "USDC_USDT_Pair": "0x..."
+}
+```
 
 ---
 
-## 5. Минт токенов через CLI
+## 7. Как проверить пулы и ликвидность на сканере
 
-Для минта используется отдельный скрипт `scripts/mint-token.ts`, запускаемый через npm‑команду `mint` (без hardhat run).
-
-Общий формат:
-
-```bash
-npm run mint -- \
-	--network <polygonAmoy|arbitrumSepolia> \
-	--token <USDCp|USDTp> \
-	--to <0xАДРЕС_ПОЛУЧАТЕЛЯ> \
-	--amount <RAW_AMOUNT> \
-	--token-address <0xАДРЕС_КОНТРАКТА_ТОКЕНА>
-```
-
-Где `RAW_AMOUNT` — значение в минимальных единицах:
-
-- при `decimals = 6` 1 токен = `1 * 10^6 = 1000000`.
-
-### Пример: минт 1 USDCp в Arbitrum Sepolia
-
-```bash
-npm run mint -- \
-	--network arbitrumSepolia \
-	--token USDCp \
-	--to 0x66e... \
-	--amount 1000000 \
-	--token-address 0x482a...
-```
-
-Пример вывода:
-
-```text
-Network: arbitrumSepolia
-RPC URL: https://arb-sepolia.g.alchemy.com/v2/...
-Minter: 0x66E5...
-Token: USDCp
-Token address: 0x482a...
-To: 0x66e5...
-Amount (raw): 1000000
-Mint tx hash: 0x19daf4...7ef80
-```
-
-После появления хеша транзакции дождись её включения в блок (можно открыть в Arbiscan для Sepolia) — баланс токена у получателя увеличится.
+1. Открой файл `addresses/<network>.json` и возьми оттуда:
+   - адреса `TestUSDC`, `TestUSDT`;
+   - адрес `USDC_USDT_Pair`;
+   - адрес `UniswapV2Router02` и `UniswapV2Factory` (при необходимости).
+2. Перейди на соответствующий блокчейн‑сканер:
+   - Polygon Amoy: https://www.oklink.com/amoy;
+   - Arbitrum Sepolia: https://sepolia.arbiscan.io/.
+3. Вставь адрес контракта `USDC_USDT_Pair`:
+   - должен быть виден контракт с токен‑балансами `TestUSDC` и `TestUSDT`;
+   - вкладка `Holders` покажет держателя ликвидности (адрес деплоера).
+4. Проверь адреса токенов `TestUSDC` и `TestUSDT`:
+   - на вкладке `Holders` увидишь баланс деплоера (около 1 000 000 - часть ушла в пул).
 
 ---
 
-## 6. Как увидеть новые токены в кошельке
+## 8. Как увидеть токены и LP в кошельке
 
-### Rabby Wallet
+### Токены TestUSDC / TestUSDT
 
-1. Переключись на нужную сеть:
-   - Arbitrum Sepolia (chainId `421614`), либо
-   - Polygon Amoy (chainId `80002`).
-2. Открой список токенов (Assets / Tokens).
-3. Нажми `Add Token` / `Add Custom Token`.
-4. Вставь адрес контракта токена:
-   - для USDCp (пример Arbitrum Sepolia):
-     ```text
-     0x482a..
-     ```
-   - для USDTp: адрес из вывода деплой‑скрипта.
-5. Если Rabby не подхватил автоматически:
-   - Symbol: `USDCp` / `USDTp`
-   - Decimals: `6`
-6. Сохрани — токен появится в списке, и ты увидишь баланс, заминченный через CLI.
+1. Переключись в кошельке на нужную сеть:
+   - Polygon Amoy (`80002`);
+   - Arbitrum Sepolia (`421614`).
+2. Добавь токены вручную:
+   - `Token contract address` = адрес `TestUSDC` или `TestUSDT` из `addresses/<network>.json`;
+   - `Symbol` можно указать `TUSDC` / `TUSDT` (либо оставить как в контракте);
+   - `Decimals` = `18`.
 
-### MetaMask
+### LP‑токен (пара USDC–USDT)
 
-1. Переключись на сеть `Arbitrum Sepolia` или `Polygon Amoy`.
-2. Внизу списка токенов нажми `Import tokens`.
-3. В поле `Token contract address` вставь адрес контракта токена.
-4. Убедись, что Symbol и Decimals определились правильно (при необходимости укажи вручную: `USDCp`/`USDTp`, `6`).
-5. Нажми `Add custom token` → `Import tokens`.
+1. Вставь адрес пары `USDC_USDT_Pair` как кастомный токен в сети;
+2. Кошелёк покажет баланс LP‑токена у деплоера.
 
-После этого кошелёк начнёт отображать баланс новых токенов для выбранного адреса.
+---
+
+## 9. Что подготовлено для будущего UI и кросс‑сетевых swap’ов
+
+На данный момент скрипт **не делает swap’ы**, но создаёт инфраструктуру:
+
+- в каждой сети есть локальный пул `TestUSDC–TestUSDT`;
+- есть унифицированные интерфейсы (ERC20, factory, router);
+- адреса всех сущностей лежат в `addresses/*.json` и могут быть автоматически подхвачены фронтендом.
+
+Будущий UI/роутер сможет:
+
+- делать внутрисетевые swap’ы:
+  - `USDC (Polygon) → USDT (Polygon)`;
+  - `USDC (Arbitrum) → USDT (Arbitrum)`;
+- делать кросс‑сетевые варианты через мост:
+  - `USDC (Arbitrum) → [swap → мост → swap] → USDT (Polygon)`;
+  - `USDT (Polygon) → [swap → мост → swap] → USDC (Arbitrum)`.
+
+Инфраструктура совместима с любыми мостами (LayerZero / Hyperlane / Axelar / кастомный).
+
+---
+
+## 10. Дополнительные скрипты токенов (исторический функционал)
+
+В проекте также остаются исходные токены `USDCp` / `USDTp` и скрипты:
+
+- `scripts/deploy-tokens.ts` — деплой `USDCp`/`USDTp` в выбранную сеть;
+- `scripts/mint-token.ts` — CLI для минта этих токенов.
+
+Они не конфликтуют с новой DEX‑инфраструктурой и могут использоваться отдельно для тестов.
+
+---
+
+## 11. Кратко: как запустить всё с нуля
+
+```bash
+cd /c/projects/hardhat-mint
+npm install
+
+# настроить .env
+
+npx hardhat compile
+
+# Polygon Amoy
+npm run setup:polygonAmoy
+
+# Arbitrum Sepolia
+npm run setup:arbitrumSepolia
+```
+
+После этого у тебя:
+
+- в каждой сети развернуты токены, фабрика, роутер и пул USDC–USDT;
+- в `addresses/*.json` лежат все адреса для фронтенда и сервисов;
+- деплоер владеет LP‑токенами и большими балансами USDC/USDT для тестирования ликвидности и swap‑логики.

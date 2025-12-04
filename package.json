@@ -7,7 +7,9 @@
     "compile": "hardhat compile",
     "deploy:polygonAmoy": "hardhat run scripts/deploy-tokens.ts --network polygonAmoy",
     "deploy:arbitrumSepolia": "hardhat run scripts/deploy-tokens.ts --network arbitrumSepolia",
-    "mint": "ts-node scripts/mint-token.ts"
+    "mint": "ts-node scripts/mint-token.ts",
+    "setup:polygonAmoy": "hardhat run scripts/setup.ts --network polygonAmoy",
+    "setup:arbitrumSepolia": "hardhat run scripts/setup.ts --network arbitrumSepolia"
   },
   "repository": {
     "type": "git",
@@ -22,6 +24,7 @@
   },
   "homepage": "https://github.com/budapesht6666/hardhat-mint#readme",
   "devDependencies": {
+    "@openzeppelin/contracts": "^5.2.0",
     "@nomicfoundation/hardhat-ignition": "^3.0.5",
     "@nomicfoundation/hardhat-toolbox-viem": "^5.0.1",
     "@types/node": "^22.19.1",

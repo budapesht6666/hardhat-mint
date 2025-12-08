@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "compile": "hardhat compile",
+    "test": "hardhat test",
     "deploy:polygonAmoy": "hardhat run scripts/deploy-tokens.ts --network polygonAmoy",
     "deploy:arbitrumSepolia": "hardhat run scripts/deploy-tokens.ts --network arbitrumSepolia",
     "mint": "ts-node scripts/mint-token.ts",

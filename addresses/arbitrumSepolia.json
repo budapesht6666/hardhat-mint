@@ -1,0 +1,8 @@
+{
+  "USDCp": "0x35325b3a17411ecbfee0116073a5f451ed248a00",
+  "USDTp": "0xcee017091ffe1fbf2b93aaee7699d0cbb636c6a2",
+  "WETH9": "0xd4690b0104169ae5eb788d8b1b2d4263fae6c09b",
+  "UniswapV2Factory": "0x2fe0d9d0070aeb5ea2917ff1d1f7795ee01df205",
+  "UniswapV2Router02": "0x2afa41216eb70f54dd2d91a24cb99876562ec045",
+  "USDC_USDT_Pair": "0x72BF986Ea2571d71885158B05Ed757984eAbEa2A"
+}

@@ -16,10 +16,7 @@ interface IUniswapV2FactoryMinimal {
 }
 
 interface IUniswapV2PairMinimal {
-    function token0() external view returns (address);
-    function token1() external view returns (address);
-    function balanceOf(address owner) external view returns (uint256);
-    function transfer(address to, uint256 value) external returns (bool);
+    function mint(address to) external returns (uint256 liquidity);
 }
 
 interface IWETH {
@@ -79,7 +76,6 @@ contract UniswapV2Router02Minimal {
         IERC20(tokenA).transferFrom(msg.sender, pair, amountA);
         IERC20(tokenB).transferFrom(msg.sender, pair, amountB);
 
-        liquidity = IUniswapV2PairMinimal(pair).balanceOf(address(this));
-        IUniswapV2PairMinimal(pair).transfer(to, liquidity);
+        liquidity = IUniswapV2PairMinimal(pair).mint(to);
     }
 }

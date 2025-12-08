@@ -1,172 +1,139 @@
-import { writeFile, readFile, mkdir } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
-import path from 'node:path';
 import { network } from 'hardhat';
-import { createWalletClient, http } from 'viem';
-import type { Address, Chain } from 'viem';
-import { privateKeyToAccount } from 'viem/accounts';
-import { polygonAmoy, arbitrumSepolia } from 'viem/chains';
+import type { Address, Hash } from 'viem';
 
-const ONE_MILLION = 1_000_000n * 10n ** 18n;
+import {
+  assertNetworkName,
+  loadAddressBook,
+  mergeAddressBook,
+  saveAddressBook,
+  type AddressBook,
+  type NetworkName,
+} from './utils/addressBook.js';
+import { buildWalletClient, resolveNetworkName } from './utils/network.js';
 
-type NetworkName = 'polygonAmoy' | 'arbitrumSepolia';
-interface AddressBook {
-  USDCpx?: Address;
-  USDTpx?: Address;
-  WETH9?: Address;
-  UniswapV2Factory?: Address;
-  UniswapV2Router02?: Address;
-  USDC_USDT_Pair?: Address;
-}
-
-const RPC_URL: Record<NetworkName, string | undefined> = {
-  polygonAmoy: process.env.POLYGON_AMOY_RPC_URL,
-  arbitrumSepolia: process.env.ARBITRUM_SEPOLIA_RPC_URL,
-};
-
-const CHAINS: Record<NetworkName, Chain> = {
-  polygonAmoy,
-  arbitrumSepolia,
-};
-
-function buildWalletClient(networkName: NetworkName) {
-  const rpcUrl = RPC_URL[networkName];
-  if (!rpcUrl) {
-    throw new Error(`RPC URL is not configured for ${networkName}`);
-  }
-  const privateKey = process.env.WALLET_PRIVATE_KEY as `0x${string}` | undefined;
-  if (!privateKey) {
-    throw new Error('WALLET_PRIVATE_KEY is not configured');
-  }
-
-  return createWalletClient({
-    account: privateKeyToAccount(privateKey),
-    chain: CHAINS[networkName],
-    transport: http(rpcUrl),
-  });
-}
-
-async function loadAddresses(networkName: NetworkName): Promise<AddressBook> {
-  const dir = path.join(process.cwd(), 'addresses');
-  const file = path.join(dir, `${networkName}.json`);
-  if (!existsSync(file)) return {};
-  const raw = await readFile(file, 'utf-8');
-  return JSON.parse(raw) as AddressBook;
-}
-
-async function saveAddresses(networkName: NetworkName, data: AddressBook): Promise<void> {
-  const dir = path.join(process.cwd(), 'addresses');
-  if (!existsSync(dir)) {
-    await mkdir(dir, { recursive: true });
-  }
-  const file = path.join(dir, `${networkName}.json`);
-  await writeFile(file, JSON.stringify(data, null, 2));
-}
+const TOKEN_DECIMALS = 6n;
+const TOKEN_UNIT = 10n ** TOKEN_DECIMALS;
+const ONE_MILLION_TOKENS = 1_000_000n * TOKEN_UNIT;
+const LIQUIDITY_TOKENS = 100_000n * TOKEN_UNIT;
 
 async function main() {
-  const networkName = (process.env.HARDHAT_NETWORK ?? 'polygonAmoy') as NetworkName;
+  const networkName = resolveNetworkName();
   const { viem } = await network.connect();
+  const publicClient = await viem.getPublicClient();
   const walletClient = buildWalletClient(networkName);
+  let addressBook = await loadAddressBook(networkName);
 
-  const addresses = await loadAddresses(networkName);
+  const persist = async (updates: Partial<AddressBook>): Promise<void> => {
+    addressBook = mergeAddressBook(addressBook, updates);
+    await saveAddressBook(networkName, addressBook);
+  };
 
-  // 1. Deploy Tokens
-  if (!addresses.USDCpx) {
-    const usdc = await viem.deployContract('USDCpx', [], {
-      client: { wallet: walletClient },
-    });
-    addresses.USDCpx = usdc.address;
-    console.log(`[${networkName}] USDCpx deployed at`, usdc.address);
-  }
-  if (!addresses.USDTpx) {
-    const usdt = await viem.deployContract('USDTpx', [], {
-      client: { wallet: walletClient },
-    });
-    addresses.USDTpx = usdt.address;
-    console.log(`[${networkName}] USDTpx deployed at`, usdt.address);
+  const usdcAddress = addressBook.USDCp;
+  const usdtAddress = addressBook.USDTp;
+  if (!usdcAddress || !usdtAddress) {
+    throw new Error(
+      `[${networkName}] Missing token addresses. Run "npm run deploy:${networkName}" to deploy USDCp/USDTp first.`,
+    );
   }
 
-  // 2. Deploy DEX Infrastructure
-  if (!addresses.WETH9) {
+  if (!addressBook.WETH9) {
     const weth = await viem.deployContract('WETH9', [], {
       client: { wallet: walletClient },
     });
-    addresses.WETH9 = weth.address;
+    await persist({ WETH9: weth.address });
     console.log(`[${networkName}] WETH9 deployed at`, weth.address);
   }
-  if (!addresses.UniswapV2Factory) {
+
+  if (!addressBook.UniswapV2Factory) {
     const factory = await viem.deployContract('UniswapV2Factory', [walletClient.account.address], {
       client: { wallet: walletClient },
     });
-    addresses.UniswapV2Factory = factory.address;
+    await persist({ UniswapV2Factory: factory.address });
     console.log(`[${networkName}] UniswapV2Factory deployed at`, factory.address);
   }
-  if (!addresses.UniswapV2Router02) {
+
+  if (!addressBook.UniswapV2Router02) {
+    if (!addressBook.UniswapV2Factory || !addressBook.WETH9) {
+      throw new Error(
+        `[${networkName}] Unable to deploy router: missing factory or WETH9 address.`,
+      );
+    }
     const router = await viem.deployContract(
       'UniswapV2Router02Minimal',
-      [addresses.UniswapV2Factory, addresses.WETH9],
+      [addressBook.UniswapV2Factory, addressBook.WETH9],
       {
         client: { wallet: walletClient },
       },
     );
-    addresses.UniswapV2Router02 = router.address;
+    await persist({ UniswapV2Router02: router.address });
     console.log(`[${networkName}] UniswapV2Router02 deployed at`, router.address);
   }
 
-  // 3. Create Pair
-  if (!addresses.USDC_USDT_Pair) {
-    const factory = await viem.getContractAt('UniswapV2Factory', addresses.UniswapV2Factory!, {
+  if (!addressBook.USDC_USDT_Pair) {
+    if (!addressBook.UniswapV2Factory) {
+      throw new Error(`[${networkName}] Unable to create pair: factory address missing.`);
+    }
+    const factory = await viem.getContractAt('UniswapV2Factory', addressBook.UniswapV2Factory, {
       client: { wallet: walletClient },
     });
-    const hash = await factory.write.createPair([addresses.USDCpx!, addresses.USDTpx!]);
-    console.log(`[${networkName}] createPair tx:`, hash);
-    // В учебных целях просто читаем getPair после майнинга
-    const pairAddress = (await factory.read.getPair([
-      addresses.USDCpx!,
-      addresses.USDTpx!,
-    ])) as Address;
-    addresses.USDC_USDT_Pair = pairAddress;
-    console.log(`[${networkName}] USDC-USDT pair at`, pairAddress);
+    const createPairHash = await factory.write.createPair([usdcAddress, usdtAddress]);
+    console.log(`[${networkName}] createPair tx:`, createPairHash);
+    await publicClient.waitForTransactionReceipt({ hash: createPairHash });
+    const pairAddress = (await factory.read.getPair([usdcAddress, usdtAddress])) as Address;
+    await persist({ USDC_USDT_Pair: pairAddress });
+    console.log(`[${networkName}] USDCp-USDTp pair at`, pairAddress);
   }
 
-  // 4. Mint Tokens
-  const usdcpx = await viem.getContractAt('USDCpx', addresses.USDCpx!, {
+  const usdc = await viem.getContractAt('USDCp', usdcAddress, {
     client: { wallet: walletClient },
   });
-  const usdtpx = await viem.getContractAt('USDTpx', addresses.USDTpx!, {
+  const usdt = await viem.getContractAt('USDTp', usdtAddress, {
     client: { wallet: walletClient },
   });
 
-  await usdcpx.write.mint([walletClient.account.address, ONE_MILLION]);
-  await usdtpx.write.mint([walletClient.account.address, ONE_MILLION]);
-  console.log(`[${networkName}] Minted 1,000,000 USDCpx & USDTpx to`, walletClient.account.address);
+  const mintUsdcHash = (await usdc.write.mint([
+    walletClient.account.address,
+    ONE_MILLION_TOKENS,
+  ])) as Hash;
+  await publicClient.waitForTransactionReceipt({ hash: mintUsdcHash });
+  const mintUsdtHash = (await usdt.write.mint([
+    walletClient.account.address,
+    ONE_MILLION_TOKENS,
+  ])) as Hash;
+  await publicClient.waitForTransactionReceipt({ hash: mintUsdtHash });
+  console.log(`[${networkName}] Minted 1,000,000 USDCp & USDTp to`, walletClient.account.address);
 
-  // 5. Approve Router
-  const routerAddress = addresses.UniswapV2Router02!;
-  await usdcpx.write.approve([routerAddress, ONE_MILLION]);
-  await usdtpx.write.approve([routerAddress, ONE_MILLION]);
-  console.log(`[${networkName}] Approved router for USDCpx/USDTpx`);
+  const routerAddress = addressBook.UniswapV2Router02;
+  if (!routerAddress) {
+    throw new Error(`[${networkName}] Router address missing, cannot approve or add liquidity.`);
+  }
 
-  // 6. Add Liquidity
+  const approveUsdcHash = (await usdc.write.approve([routerAddress, ONE_MILLION_TOKENS])) as Hash;
+  await publicClient.waitForTransactionReceipt({ hash: approveUsdcHash });
+  const approveUsdtHash = (await usdt.write.approve([routerAddress, ONE_MILLION_TOKENS])) as Hash;
+  await publicClient.waitForTransactionReceipt({ hash: approveUsdtHash });
+  console.log(`[${networkName}] Approved router for USDCp/USDTp`);
+
   const router = await viem.getContractAt('UniswapV2Router02Minimal', routerAddress, {
     client: { wallet: walletClient },
   });
   const deadline = BigInt(Math.floor(Date.now() / 1000) + 60 * 20);
-  const amount = 100_000n * 10n ** 18n;
-  await router.write.addLiquidity([
-    addresses.USDCpx!,
-    addresses.USDTpx!,
+  const amount = LIQUIDITY_TOKENS;
+  const minAmount = 0n;
+  const addLiquidityHash = await router.write.addLiquidity([
+    usdcAddress,
+    usdtAddress,
     amount,
     amount,
-    amount,
-    amount,
+    minAmount,
+    minAmount,
     walletClient.account.address,
     deadline,
   ]);
-  console.log(`[${networkName}] addLiquidity called for USDCpx/USDTpx`);
+  await publicClient.waitForTransactionReceipt({ hash: addLiquidityHash });
+  console.log(`[${networkName}] addLiquidity called for USDCp/USDTp`);
 
-  await saveAddresses(networkName, addresses);
-  console.log(`[${networkName}] Addresses saved to addresses/${networkName}.json`);
+  console.log(`[${networkName}] Address book stored at addresses/${networkName}.json`);
 }
 
 main().catch((err) => {

@@ -6,6 +6,7 @@
   "scripts": {
     "compile": "hardhat compile",
     "test": "hardhat test",
+    "validate": "node scripts/validate.mjs",
     "deploy:polygonAmoy": "hardhat run scripts/deploy-tokens.ts --network polygonAmoy",
     "deploy:arbitrumSepolia": "hardhat run scripts/deploy-tokens.ts --network arbitrumSepolia",
     "mint": "ts-node scripts/mint-token.ts",

@@ -17,6 +17,7 @@ const ONE_MILLION_TOKENS = 1_000_000n * TOKEN_UNIT;
 const LIQUIDITY_TOKENS = 100_000n * TOKEN_UNIT;
 const SLIPPAGE_TOLERANCE = 95n; // 5% slippage tolerance
 const DEADLINE_MINUTES = 20;
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as Address;
 
 async function main() {
   const networkName = resolveNetworkName();
@@ -71,20 +72,28 @@ async function main() {
     console.log(`[${networkName}] UniswapV2Router02 deployed at`, router.address);
   }
 
-  if (!addressBook.USDC_USDT_Pair) {
-    if (!addressBook.UniswapV2Factory) {
-      throw new Error(`[${networkName}] Unable to create pair: factory address missing.`);
-    }
-    const factory = await viem.getContractAt('UniswapV2Factory', addressBook.UniswapV2Factory, {
-      client: { wallet: walletClient },
-    });
+  const factoryAddress = addressBook.UniswapV2Factory;
+  if (!factoryAddress) {
+    throw new Error(`[${networkName}] Unable to create pair: factory address missing.`);
+  }
+
+  const factory = await viem.getContractAt('UniswapV2Factory', factoryAddress, {
+    client: { wallet: walletClient },
+  });
+
+  let pairAddress = (await factory.read.getPair([usdcAddress, usdtAddress])) as Address;
+
+  if (pairAddress === ZERO_ADDRESS) {
     const createPairHash = await factory.write.createPair([usdcAddress, usdtAddress]);
     console.log(`[${networkName}] createPair tx:`, createPairHash);
     await publicClient.waitForTransactionReceipt({ hash: createPairHash });
-    const pairAddress = (await factory.read.getPair([usdcAddress, usdtAddress])) as Address;
-    await persist({ USDC_USDT_Pair: pairAddress });
-    console.log(`[${networkName}] USDCp-USDTp pair at`, pairAddress);
+    pairAddress = (await factory.read.getPair([usdcAddress, usdtAddress])) as Address;
+    console.log(`[${networkName}] USDCp-USDTp pair created at`, pairAddress);
+  } else {
+    console.log(`[${networkName}] Existing USDCp-USDTp pair at`, pairAddress);
   }
+
+  await persist({ USDC_USDT_Pair: pairAddress });
 
   const usdc = await viem.getContractAt('USDCp', usdcAddress, {
     client: { wallet: walletClient },
@@ -104,9 +113,14 @@ async function main() {
       mintAmount,
     ])) as Hash;
     await publicClient.waitForTransactionReceipt({ hash: mintUsdcHash });
-    console.log(`[${networkName}] Minted ${mintAmount / TOKEN_UNIT} USDCp to`, walletClient.account.address);
+    console.log(
+      `[${networkName}] Minted ${mintAmount / TOKEN_UNIT} USDCp to`,
+      walletClient.account.address,
+    );
   } else {
-    console.log(`[${networkName}] Sufficient USDCp balance (${usdcBalance / TOKEN_UNIT}), skipping mint`);
+    console.log(
+      `[${networkName}] Sufficient USDCp balance (${usdcBalance / TOKEN_UNIT}), skipping mint`,
+    );
   }
 
   if (usdtBalance < ONE_MILLION_TOKENS) {
@@ -116,9 +130,14 @@ async function main() {
       mintAmount,
     ])) as Hash;
     await publicClient.waitForTransactionReceipt({ hash: mintUsdtHash });
-    console.log(`[${networkName}] Minted ${mintAmount / TOKEN_UNIT} USDTp to`, walletClient.account.address);
+    console.log(
+      `[${networkName}] Minted ${mintAmount / TOKEN_UNIT} USDTp to`,
+      walletClient.account.address,
+    );
   } else {
-    console.log(`[${networkName}] Sufficient USDTp balance (${usdtBalance / TOKEN_UNIT}), skipping mint`);
+    console.log(
+      `[${networkName}] Sufficient USDTp balance (${usdtBalance / TOKEN_UNIT}), skipping mint`,
+    );
   }
 
   const routerAddress = addressBook.UniswapV2Router02;
@@ -150,7 +169,9 @@ async function main() {
     deadline,
   ]);
   await publicClient.waitForTransactionReceipt({ hash: addLiquidityHash });
-  console.log(`[${networkName}] addLiquidity called for USDCp/USDTp with ${SLIPPAGE_TOLERANCE}% slippage protection`);
+  console.log(
+    `[${networkName}] addLiquidity called for USDCp/USDTp with ${SLIPPAGE_TOLERANCE}% slippage protection`,
+  );
 
   console.log(`[${networkName}] Address book stored at addresses/${networkName}.json`);
 }

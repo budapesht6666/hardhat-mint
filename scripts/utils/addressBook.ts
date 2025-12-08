@@ -1,5 +1,5 @@
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { readFile, writeFile, mkdir, access } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import path from 'node:path';
 import type { Address } from 'viem';
 
@@ -25,9 +25,18 @@ export function assertNetworkName(name: string | undefined): NetworkName {
   );
 }
 
+async function fileExists(filePath: string): Promise<boolean> {
+  try {
+    await access(filePath, constants.F_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function loadAddressBook(networkName: NetworkName): Promise<AddressBook> {
   const file = path.join(ADDRESSES_DIR, `${networkName}.json`);
-  if (!existsSync(file)) {
+  if (!(await fileExists(file))) {
     return {};
   }
   const raw = await readFile(file, 'utf-8');
@@ -35,7 +44,7 @@ export async function loadAddressBook(networkName: NetworkName): Promise<Address
 }
 
 async function ensureDir(): Promise<void> {
-  if (!existsSync(ADDRESSES_DIR)) {
+  if (!(await fileExists(ADDRESSES_DIR))) {
     await mkdir(ADDRESSES_DIR, { recursive: true });
   }
 }

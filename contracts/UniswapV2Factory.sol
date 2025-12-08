@@ -21,6 +21,16 @@ contract UniswapV2PairMinimal is IUniswapV2Pair {
 
     uint112 private reserve0;
     uint112 private reserve1;
+    uint256 private unlocked = 1;
+
+    uint256 public constant MINIMUM_LIQUIDITY = 10**3;
+
+    modifier lock() {
+        require(unlocked == 1, "LOCKED");
+        unlocked = 0;
+        _;
+        unlocked = 1;
+    }
 
     function initialize(address _token0, address _token1) external override {
         require(token0 == address(0) && token1 == address(0), "ALREADY_INIT");
@@ -32,7 +42,7 @@ contract UniswapV2PairMinimal is IUniswapV2Pair {
         return (reserve0, reserve1);
     }
 
-    function mint(address to) external override returns (uint256 liquidity) {
+    function mint(address to) external override lock returns (uint256 liquidity) {
         (uint112 _reserve0, uint112 _reserve1) = (reserve0, reserve1);
         uint256 balance0 = IERC20Minimal(token0).balanceOf(address(this));
         uint256 balance1 = IERC20Minimal(token1).balanceOf(address(this));
@@ -40,7 +50,9 @@ contract UniswapV2PairMinimal is IUniswapV2Pair {
         uint256 amount1 = balance1 - _reserve1;
 
         if (totalSupply == 0) {
-            liquidity = _sqrt(amount0 * amount1);
+            liquidity = _sqrt(amount0 * amount1) - MINIMUM_LIQUIDITY;
+            balanceOf[address(0)] = MINIMUM_LIQUIDITY; // permanently lock the first MINIMUM_LIQUIDITY tokens
+            totalSupply = MINIMUM_LIQUIDITY;
         } else {
             liquidity = _min((amount0 * totalSupply) / _reserve0, (amount1 * totalSupply) / _reserve1);
         }
@@ -59,6 +71,7 @@ contract UniswapV2PairMinimal is IUniswapV2Pair {
     }
 
     function _update(uint256 balance0, uint256 balance1) private {
+        require(balance0 <= type(uint112).max && balance1 <= type(uint112).max, "OVERFLOW");
         reserve0 = uint112(balance0);
         reserve1 = uint112(balance1);
     }

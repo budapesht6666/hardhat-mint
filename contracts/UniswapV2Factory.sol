@@ -52,14 +52,15 @@ contract UniswapV2PairMinimal is IUniswapV2Pair {
         if (totalSupply == 0) {
             liquidity = _sqrt(amount0 * amount1) - MINIMUM_LIQUIDITY;
             balanceOf[address(0)] = MINIMUM_LIQUIDITY; // permanently lock the first MINIMUM_LIQUIDITY tokens
-            totalSupply = MINIMUM_LIQUIDITY;
+            balanceOf[to] = liquidity;
+            totalSupply = liquidity + MINIMUM_LIQUIDITY;
         } else {
             liquidity = _min((amount0 * totalSupply) / _reserve0, (amount1 * totalSupply) / _reserve1);
+            balanceOf[to] += liquidity;
+            totalSupply += liquidity;
         }
         require(liquidity > 0, "INSUFFICIENT_LIQUIDITY_MINTED");
 
-        balanceOf[to] += liquidity;
-        totalSupply += liquidity;
         _update(balance0, balance1);
     }
 

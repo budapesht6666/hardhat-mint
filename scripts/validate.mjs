@@ -72,8 +72,8 @@ const setupChecks = [
   }),
   (content) => ({
     name: 'No zero slippage',
-    passed: !content.includes('minAmount = 0n;') || 
-            (content.includes('minAmount = 0n') && content.includes('// Apply slippage tolerance')),
+    passed: content.includes('minAmount = (amount * SLIPPAGE_TOLERANCE) / 100n') && 
+            !content.match(/minAmount\s*=\s*0n\s*;/),
     message: 'Zero slippage protection has been replaced with percentage-based protection',
   }),
   (content) => ({

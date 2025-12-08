@@ -50,11 +50,14 @@ contract UniswapV2PairMinimal is IUniswapV2Pair {
         uint256 amount1 = balance1 - _reserve1;
 
         if (totalSupply == 0) {
+            // First liquidity provider: burn MINIMUM_LIQUIDITY to address(0)
+            // This prevents division-by-zero attacks and ensures minimum pool depth
             liquidity = _sqrt(amount0 * amount1) - MINIMUM_LIQUIDITY;
-            balanceOf[address(0)] = MINIMUM_LIQUIDITY; // permanently lock the first MINIMUM_LIQUIDITY tokens
+            balanceOf[address(0)] = MINIMUM_LIQUIDITY;
             balanceOf[to] = liquidity;
             totalSupply = liquidity + MINIMUM_LIQUIDITY;
         } else {
+            // Subsequent liquidity: proportional to existing reserves
             liquidity = _min((amount0 * totalSupply) / _reserve0, (amount1 * totalSupply) / _reserve1);
             balanceOf[to] += liquidity;
             totalSupply += liquidity;

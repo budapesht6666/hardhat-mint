@@ -4,6 +4,9 @@ import { describe, it } from 'node:test';
 import { network } from 'hardhat';
 import type { Address } from 'viem';
 
+// Constants matching setup.ts
+const SLIPPAGE_TOLERANCE = 95n; // 5% slippage tolerance
+
 describe('UniswapV2 System', async function () {
   const { viem } = await network.connect();
   const publicClient = await viem.getPublicClient();
@@ -43,10 +46,12 @@ describe('UniswapV2 System', async function () {
       
       await usdc.write.mint([walletClient.account.address, mintAmount]);
       
-      const [recipient] = await viem.getWalletClients();
-      await usdc.write.transfer([recipient.account.address, transferAmount]);
+      // Get a different wallet client for the recipient
+      const [, recipient] = await viem.getWalletClients();
+      const recipientAddress = recipient ? recipient.account.address : walletClient.account.address;
+      await usdc.write.transfer([recipientAddress, transferAmount]);
       
-      const recipientBalance = await usdc.read.balanceOf([recipient.account.address]);
+      const recipientBalance = await usdc.read.balanceOf([recipientAddress]);
       assert.equal(recipientBalance, transferAmount);
     });
   });
@@ -221,7 +226,7 @@ describe('UniswapV2 System', async function () {
 
       // Add liquidity
       const deadline = BigInt(Math.floor(Date.now() / 1000) + 1200);
-      const minAmount = (amount * 95n) / 100n; // 5% slippage
+      const minAmount = (amount * SLIPPAGE_TOLERANCE) / 100n;
 
       await router.write.addLiquidity([
         usdc.address,

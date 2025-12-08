@@ -31,6 +31,7 @@ WALLET_PRIVATE_KEY=0x<PRIVATE_KEY>
 ```bash
 npm install
 npm run compile
+npm run test
 ```
 
 ### Deploy everything
@@ -41,6 +42,22 @@ npm run setup:arbitrumSepolia
 ```
 
 Each run refreshes `addresses/*.json` with new contract addresses.
+
+### Testing
+
+Run the test suite to verify contract functionality:
+
+```bash
+npm run test
+```
+
+Tests cover:
+- Token minting and transfers
+- Factory pair creation
+- Liquidity pool operations
+- Reentrancy protection
+- Overflow protection
+- Router functionality
 
 ### Extra scripts
 
